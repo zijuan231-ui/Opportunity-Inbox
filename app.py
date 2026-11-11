@@ -1,7 +1,8 @@
-"""Opportunity Inbox 静态原型入口。"""
+"""Opportunity Inbox 应用入口。"""
 
 import streamlit as st
 
+import database
 from views.add_opportunity import render_add_opportunity
 from views.profile import render_profile
 from views.workbench import render_workbench
@@ -11,6 +12,12 @@ PAGES = {
     "添加机会": render_add_opportunity,
     "个人画像": render_profile,
 }
+
+
+@st.cache_resource
+def bootstrap_database():
+    """每个进程只初始化一次：建表，并在空库中导入演示数据。"""
+    database.init_db()
 
 
 def apply_local_style():
@@ -59,6 +66,12 @@ def main():
         initial_sidebar_state="expanded",
     )
     apply_local_style()
+
+    try:
+        bootstrap_database()
+    except database.DatabaseError:
+        st.error("数据库初始化失败，请检查 data/ 目录是否可写后重试。")
+        st.stop()
 
     with st.sidebar:
         st.header("Opportunity Inbox")

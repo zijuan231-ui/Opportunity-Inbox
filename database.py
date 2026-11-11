@@ -94,6 +94,10 @@ class DataValidationError(ValueError):
     """机会字段校验未通过，消息可直接展示给用户。"""
 
 
+class DeadlineConfirmationRequired(DataValidationError):
+    """截止日期已经过期，需要用户确认后才可以保存。"""
+
+
 @contextmanager
 def get_connection():
     """打开连接并在退出时提交或回滚，确保写入要么全部成功要么全部撤销。"""
@@ -152,10 +156,14 @@ def get_opportunity(opportunity_id):
     return dict(row) if row else None
 
 
-def create_opportunity(data):
-    """新增一条机会并返回新记录的 id。字段不合法时抛出 DataValidationError。"""
+def create_opportunity(data, allow_past_deadline=False):
+    """新增一条机会并返回新记录的 id。
+
+    字段不合法时抛出 DataValidationError；截止日期已过期且未确认时
+    抛出 DeadlineConfirmationRequired。
+    """
     payload = _normalize(data)
-    _validate(payload)
+    _validate(payload, created_date=date.today(), allow_past_deadline=allow_past_deadline)
     now = _now()
 
     with get_connection() as connection:
@@ -166,13 +174,27 @@ def create_opportunity(data):
         return cursor.lastrowid
 
 
-def update_opportunity(opportunity_id, data):
-    """整体更新一条机会，返回是否命中了记录。字段不合法时抛出 DataValidationError。"""
+def update_opportunity(opportunity_id, data, allow_past_deadline=False):
+    """整体更新一条机会，返回是否命中了记录。
+
+    截止日期不能早于该机会的创建日期；字段不合法时抛出 DataValidationError，
+    过期但未确认时抛出 DeadlineConfirmationRequired。
+    """
     payload = _normalize(data)
-    _validate(payload)
     now = _now()
 
     with get_connection() as connection:
+        row = connection.execute(
+            "SELECT created_at FROM opportunities WHERE id = ?", (opportunity_id,)
+        ).fetchone()
+        if row is None:
+            return False
+
+        _validate(
+            payload,
+            created_date=_stored_date(row["created_at"]),
+            allow_past_deadline=allow_past_deadline,
+        )
         cursor = connection.execute(
             _UPDATE_SQL,
             (
@@ -228,19 +250,49 @@ def _normalize(data):
     return payload
 
 
-def _validate(payload):
-    """校验必填字段和日期格式，错误信息可直接展示。"""
+def _validate(payload, created_date, allow_past_deadline=False):
+    """校验必填字段、日期格式和日期业务规则，错误信息可直接展示。"""
     errors = []
     for field, label in REQUIRED_FIELDS.items():
         if not payload[field]:
             errors.append(f"请填写{label}")
 
-    deadline = payload["deadline"]
-    if deadline and not _is_valid_date(deadline):
-        errors.append("截止日期需使用 YYYY-MM-DD 格式，例如 2026-12-31")
+    deadline_text = payload["deadline"]
+    deadline = None
+    if deadline_text:
+        if _is_valid_date(deadline_text):
+            deadline = date.fromisoformat(deadline_text)
+        else:
+            errors.append("截止日期需使用 YYYY-MM-DD 格式，例如 2026-12-31")
 
     if errors:
         raise DataValidationError("；".join(errors))
+
+    if deadline is None:
+        return
+
+    today = date.today()
+    # 历史机会：截止日期不能早于机会自身的创建日期。
+    # 当天新建的机会视为今天创建，过期情况交给下面的确认流程处理。
+    if created_date is not None and created_date < today and deadline < created_date:
+        raise DataValidationError(
+            f"截止日期不能早于机会创建日期（{created_date.isoformat()}），请修改后重新保存。"
+        )
+
+    # 日期本身合法但已经过期：不禁止保存，要求用户确认。
+    if deadline < today and not allow_past_deadline:
+        raise DeadlineConfirmationRequired(
+            f"截止日期 {deadline.isoformat()} 已经过去，确认仍要保存这条机会吗？"
+        )
+
+
+def _stored_date(created_at):
+    """从 created_at（YYYY-MM-DD HH:MM:SS）中取出日期部分。"""
+    text = (created_at or "").strip()[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return date.today()
 
 
 def _is_valid_date(value):

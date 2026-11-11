@@ -72,6 +72,30 @@ def render_parse_result(form_version):
     return values
 
 
+def save_opportunity(values, allow_past_deadline=False):
+    """保存机会。校验失败时提示，成功时重置表单并重新运行。"""
+    try:
+        opportunity_id = database.create_opportunity(
+            values, allow_past_deadline=allow_past_deadline
+        )
+    except database.DeadlineConfirmationRequired as error:
+        st.session_state["pending_expired_save"] = str(error)
+        return
+    except database.DataValidationError as error:
+        st.error(f"无法保存：{error}")
+        return
+    except database.DatabaseError:
+        st.error("数据库暂时不可用，机会未保存，请稍后重试。")
+        return
+
+    st.session_state.pop("pending_expired_save", None)
+    st.session_state["add_flash"] = (
+        f"已保存机会「{values['name'].strip()}」（编号 {opportunity_id}）。"
+    )
+    st.session_state["reset_add_form"] = True
+    st.rerun()
+
+
 def render_add_opportunity():
     """渲染添加机会页面。"""
     st.title("添加机会")
@@ -82,7 +106,12 @@ def render_add_opportunity():
         st.success(flash)
 
     if st.session_state.pop("reset_add_form", False):
-        for key in ("notice_text", "show_mock_parse", "parsed_source_text"):
+        for key in (
+            "notice_text",
+            "show_mock_parse",
+            "parsed_source_text",
+            "pending_expired_save",
+        ):
             st.session_state.pop(key, None)
         st.session_state["parse_form_version"] = (
             st.session_state.get("parse_form_version", 0) + 1
@@ -102,6 +131,7 @@ def render_add_opportunity():
         else:
             st.session_state.pop("show_mock_parse", None)
             st.session_state.pop("parsed_source_text", None)
+            st.session_state.pop("pending_expired_save", None)
             st.warning("请先粘贴机会通知内容，再点击模拟解析。")
 
     if not st.session_state.get("show_mock_parse"):
@@ -110,6 +140,7 @@ def render_add_opportunity():
     if st.session_state.get("parsed_source_text") != notice_text:
         st.session_state.pop("show_mock_parse", None)
         st.session_state.pop("parsed_source_text", None)
+        st.session_state.pop("pending_expired_save", None)
         st.caption("输入内容已变化，此前的模拟解析结果已失效。")
         return
 
@@ -117,15 +148,10 @@ def render_add_opportunity():
     values = render_parse_result(form_version)
 
     if st.button("保存机会", type="primary"):
-        try:
-            opportunity_id = database.create_opportunity(values)
-        except database.DataValidationError as error:
-            st.error(f"无法保存：{error}")
-        except database.DatabaseError:
-            st.error("数据库暂时不可用，机会未保存，请稍后重试。")
-        else:
-            st.session_state["add_flash"] = (
-                f"已保存机会「{values['name'].strip()}」（编号 {opportunity_id}）。"
-            )
-            st.session_state["reset_add_form"] = True
-            st.rerun()
+        save_opportunity(values)
+
+    pending_message = st.session_state.get("pending_expired_save")
+    if pending_message:
+        st.warning(pending_message)
+        if st.button("确认保存过期机会", type="primary", key="confirm-expired-save"):
+            save_opportunity(values, allow_past_deadline=True)

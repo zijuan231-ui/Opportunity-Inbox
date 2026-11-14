@@ -1,21 +1,27 @@
 """机会工作台：从 SQLite 读取机会，展示数量、状态和详情。"""
 
+import json
+
 import streamlit as st
 
 import database
 from sample_data import STATUS_ORDER
 
+# Day 5：新增 5 个字段。key_dates / evidence 是 JSON 字符串，在 render_opportunity 里单独处理。
 DETAIL_FIELDS = [
     ("type", "机会类型"),
     ("organization", "发布组织"),
-    ("deadline", "截止日期"),
-    ("status", "当前状态"),
-    ("match_reason", "匹配理由"),
-    ("gap_analysis", "能力差距"),
+    ("deadline", "主要报名截止"),
+    ("source_link", "官方链接"),
+    ("benefits", "机会回报"),
+    ("registration_process", "报名流程"),
     ("requirements", "申请条件"),
     ("skills", "技能要求"),
     ("materials", "申请材料"),
+    ("match_reason", "匹配理由"),
+    ("gap_analysis", "能力差距"),
     ("raw_text", "原始通知"),
+    ("source_file_name", "原始文件"),
     ("created_at", "添加时间"),
     ("updated_at", "更新时间"),
 ]
@@ -53,12 +59,130 @@ def show_flash():
         getattr(st, flash["kind"])(flash["message"])
 
 
+def render_source_file(item):
+    """展示并下载机会关联的原始文件；文件缺失时给出提示。"""
+    if not item.get("source_file_path"):
+        return
+    try:
+        path = database.resolve_upload_path(item["source_file_path"])
+    except database.DataValidationError:
+        st.caption("原始文件路径不合法，已隐藏。")
+        return
+    if not path.is_file():
+        st.caption("原始文件已不存在，可能已被清理。")
+        return
+    with path.open("rb") as handle:
+        st.download_button(
+            "下载原始文件",
+            data=handle.read(),
+            file_name=item.get("source_file_name") or path.name,
+            key=f"download-{item['id']}",
+        )
+
+
+def _render_source_link(value):
+    """把链接渲染为可点击的 markdown。"""
+    if not value:
+        st.markdown("—")
+        return
+    stripped = value.strip()
+    if stripped.startswith(("http://", "https://")):
+        st.markdown(f"[{stripped}]({stripped})")
+    else:
+        st.markdown(display_value(value))
+
+
+def _render_key_dates(raw_value):
+    """把 key_dates JSON 字符串友好渲染为时间节点列表。"""
+    if not raw_value:
+        st.markdown("—")
+        return
+    try:
+        data = json.loads(raw_value)
+    except json.JSONDecodeError:
+        st.markdown(display_value(raw_value))
+        return
+    if not isinstance(data, list) or not data:
+        st.markdown("—")
+        return
+    def sort_key(item):
+        if not isinstance(item, dict):
+            return ""
+        return item.get("start_date") or item.get("end_date") or ""
+    sorted_items = sorted(data, key=sort_key)
+    for idx, item in enumerate(sorted_items, 1):
+        if not isinstance(item, dict):
+            continue
+        event = item.get("event") or f"事件 {idx}"
+        start = item.get("start_date") or ""
+        end = item.get("end_date") or ""
+        description = item.get("description") or ""
+        if start and end:
+            date_range = f"{start} → {end}"
+        elif start:
+            date_range = start
+        elif end:
+            date_range = end
+        else:
+            date_range = "日期待确认"
+        line = f"- **{event}** — {date_range}"
+        if description:
+            line += f"  （{description}）"
+        st.markdown(line)
+
+
+def _render_evidence(raw_value):
+    """把 evidence JSON 字符串渲染为可展开的字段证据组。"""
+    if not raw_value:
+        st.markdown("—")
+        return
+    try:
+        data = json.loads(raw_value)
+    except json.JSONDecodeError:
+        st.markdown(display_value(raw_value))
+        return
+    if not isinstance(data, dict) or not data:
+        st.markdown("—")
+        return
+    for field_name, entry in data.items():
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("value") or ""
+        quote = entry.get("quote") or ""
+        with st.expander(f"📌 {field_name}", expanded=False):
+            if value:
+                st.markdown(f"**提取值**：{value}")
+            if quote:
+                st.markdown(f"> {quote}")
+            if not value and not quote:
+                st.caption("（无内容）")
+
+
 def render_opportunity(item):
     """在展开区域中展示一条机会的完整信息，并提供改状态和删除操作。"""
     with st.expander(f"{item['name']}  ·  {item['status']}"):
         for key, label in DETAIL_FIELDS:
+            if key == "source_file_name" and not item.get(key):
+                continue
             st.caption(label)
+
+            # 特殊渲染
+            if key == "source_link":
+                _render_source_link(item.get(key, ""))
+                continue
+
             st.markdown(display_value(item[key]))
+
+        # Day 5：独立于普通 DETAIL_FIELDS 展示 JSON 字段，保持良好的可读性。
+        # key_dates
+        st.caption("关键时间节点")
+        _render_key_dates(item.get("key_dates", ""))
+
+        # evidence
+        st.caption("原文依据")
+        _render_evidence(item.get("evidence", ""))
+
+        render_source_file(item)
 
         st.space("small")
         status_col, save_col, delete_col = st.columns(
@@ -148,5 +272,19 @@ def render_workbench():
         column.metric(status, count_by_status(opportunities, status))
 
     st.subheader("最近添加")
+    type_options = ["全部类型"] + [
+        item_type
+        for item_type in database.OPPORTUNITY_TYPES
+        if any(opportunity["type"] == item_type for opportunity in opportunities)
+    ]
+    selected_type = st.selectbox("按机会类型筛选", type_options)
+    if selected_type != "全部类型":
+        opportunities = [
+            opportunity
+            for opportunity in opportunities
+            if opportunity["type"] == selected_type
+        ]
+        st.caption(f"当前筛选：{selected_type}，共 {len(opportunities)} 条")
+
     for item in recent_opportunities(opportunities):
         render_opportunity(item)

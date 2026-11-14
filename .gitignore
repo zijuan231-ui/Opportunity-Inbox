@@ -19,6 +19,10 @@ venv/
 *.sqlite
 *.sqlite3
 
+# 上传的知识库文件与临时文件
+data/uploads/
+*.tmp
+
 # IDE 缓存
 .vscode/
 .idea/

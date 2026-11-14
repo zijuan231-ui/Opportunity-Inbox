@@ -3,14 +3,20 @@
 import streamlit as st
 
 import database
-from views.add_opportunity import render_add_opportunity
+from views.add_opportunity import render_discover
+from views.knowledge import render_knowledge
 from views.profile import render_profile
 from views.workbench import render_workbench
 
 PAGES = {
     "机会工作台": render_workbench,
-    "添加机会": render_add_opportunity,
+    "发现机会": render_discover,
     "个人画像": render_profile,
+}
+
+# 知识库转为开发者后台维护入口，不占用普通用户的一级导航。
+BACKGROUND_PAGES = {
+    "知识库（后台）": render_knowledge,
 }
 
 
@@ -77,8 +83,21 @@ def main():
         st.header("Opportunity Inbox")
         st.caption("机会发现与决策助手")
         page_name = st.radio("功能", list(PAGES), label_visibility="collapsed")
+        with st.expander("开发者工具"):
+            show_background = st.toggle("显示知识库后台", value=False)
+            background_name = None
+            if show_background:
+                background_name = st.radio(
+                    "后台功能",
+                    list(BACKGROUND_PAGES),
+                    label_visibility="collapsed",
+                )
 
-    PAGES[page_name]()
+    # 打开后台开关后优先展示后台页面，否则展示普通用户页面。
+    if background_name:
+        BACKGROUND_PAGES[background_name]()
+    else:
+        PAGES[page_name]()
 
 
 main()

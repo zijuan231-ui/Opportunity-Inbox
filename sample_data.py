@@ -6,7 +6,7 @@ STATUS_ORDER = ["待评估", "值得尝试", "准备中", "已申请", "已放�
 OPPORTUNITIES = [
     {
         "title": "字节跳动前端开发实习",
-        "category": "实习",
+        "category": "实习就业",
         "organization": "字节跳动",
         "deadline": "2026-11-30",
         "requirements": "计算机相关专业在读，每周可到岗 4 天及以上。",
@@ -18,7 +18,7 @@ OPPORTUNITIES = [
     },
     {
         "title": "腾讯文档前端实习",
-        "category": "实习",
+        "category": "实习就业",
         "organization": "腾讯",
         "deadline": "2026-12-05",
         "requirements": "本科及以上在读，能连续实习 3 个月。",
@@ -30,7 +30,7 @@ OPPORTUNITIES = [
     },
     {
         "title": "全国大学生数学建模竞赛",
-        "category": "竞赛",
+        "category": "学科竞赛",
         "organization": "中国工业与应用数学学会",
         "deadline": "2027-09-15",
         "requirements": "全日制在校本科生，每队 3 人。",
@@ -42,7 +42,7 @@ OPPORTUNITIES = [
     },
     {
         "title": "自动化所暑期科研实习",
-        "category": "科研项目",
+        "category": "科研学术",
         "organization": "中国科学院自动化研究所",
         "deadline": "2027-04-20",
         "requirements": "相关专业本科三年级及以上，能到所实习 8 周。",
@@ -54,7 +54,7 @@ OPPORTUNITIES = [
     },
     {
         "title": "国家奖学金评审",
-        "category": "奖学金",
+        "category": "奖学金与资助",
         "organization": "所在学院学工办",
         "deadline": "2026-10-12",
         "requirements": "学习成绩位于专业前 10%，无违纪记录。",
@@ -66,7 +66,7 @@ OPPORTUNITIES = [
     },
     {
         "title": "商业案例分析大赛",
-        "category": "竞赛",
+        "category": "学科竞赛",
         "organization": "某高校商学院",
         "deadline": "2026-10-01",
         "requirements": "需组队参加，并完成英文案例陈述。",
@@ -106,7 +106,7 @@ USER_PROFILE = {
 # 固定示例。本阶段不读取用户输入，也不调用模型。
 MOCK_PARSE_RESULT = {
     "title": "中国大学生计算机设计大赛",
-    "category": "竞赛",
+    "category": "学科竞赛",
     "organization": "中国大学生计算机设计大赛组织委员会",
     "deadline": "2026-05-31",
     "requirements": "普通高校在校本科生，以不超过 3 人的团队报名。",
